@@ -25,17 +25,23 @@ map_key_value(RObj, _KD, [{select, Select}, {where, Where}]) ->
         {error, notfound} ->
             [];
         _ ->
-            DJson = mochijson2:decode(riak_object:get_value(RObj)),
-            case Where of
-                [{_,_}|_] ->
-                    case lists:all(fun({Key, Pred}) ->
-                                       where_key(Key, Pred, DJson)
-                                   end, Where) of
-                        false -> [];
-                        true -> make_key_value(RObj, DJson, Select)
+            case (catch mochijson2:decode(riak_object:get_value(RObj))) of
+                {'EXIT', _} ->
+                    [];
+                DJson={struct, _} ->
+                    case Where of
+                        [{_,_}|_] ->
+                            case lists:all(fun({Key, Pred}) ->
+                                               where_key(Key, Pred, DJson)
+                                           end, Where) of
+                                false -> [];
+                                true -> make_key_value(RObj, DJson, Select)
+                            end;
+                        _ ->
+                            make_key_value(RObj, DJson, Select)
                     end;
                 _ ->
-                    make_key_value(RObj, DJson, Select)
+                    []
             end
     end.
 
