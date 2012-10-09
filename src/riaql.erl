@@ -1,5 +1,6 @@
 -module(riaql).
 -export([q/1,q/2,q/3]).
+-export([bucket/1,index/3,index/4]).
 
 q(<<_/bitstring>>=Query) ->
     case riaql_parser:parse(Query) of
@@ -14,15 +15,16 @@ q(From, Select) ->
     q(From, Select, none).
 q(From, Select, Where) ->
     {ok, Client} = riak:local_client(),
-    case Client:mapred(
-                       From,
-                       [{
-                         map,
-                         {qfun, fun map_key_value/3},
-                         [{select, Select}, {where, Where}],
-                         true
-                        }],
-                        60000) of
+    case riaql_mapreduce:mapred(
+                                From,
+                                [{
+                                  map,
+                                  {qfun, fun map_key_value/3},
+                                  [{select, Select}, {where, Where}],
+                                  true
+                                 }],
+                                 60000
+                                ) of
         {ok, Result} -> Result;
         {error, Reason} -> throw(Reason)
     end.
@@ -77,3 +79,11 @@ select_keys(Keys=[{_,_}|_], {struct, PList}) ->
             {NewKey, Key} -> [{NewKey, Val}|Acc]
         end
     end, [], PList)}.
+
+bucket(Bucket) ->
+    Bucket.
+
+index(Bucket, Index, Key) ->
+    {index, Bucket, Index, Key}.
+index(Bucket, Index, StartKey, EndKey) ->
+    {index, Bucket, Index, StartKey, EndKey}.
