@@ -1,0 +1,60 @@
+query <- 'SELECT' space+ select_clause space+ 'FROM' space+ from_clause
+space* ('WHERE' space+ where_clause)?
+`
+[_,_,Select,_,_,_,From,_|Rest]=Node,
+case Rest of
+    [[]] -> {From, Select};
+    _ ->
+        [[_, _, Where]] = Rest,
+        {From, Select, Where}
+end
+`;
+
+select_clause <- '*' / ((keymap / key) (',' space (keymap / key))*)
+`
+case Node of
+    <<"*">> ->
+        Node;
+    [Key,[]] ->
+        [Key];
+    [Key1,List] ->
+        [Key1|[KeyN || [_,_,KeyN] <- List]]
+end
+`;
+
+from_clause <- name ~;
+
+where_clause <- name space? '=' space? value (',' space? name space? '=' space? value)*
+`
+[Key,_,_,_,Value|Rest]=Node,
+Where1={Key, fun(Val) -> Val =:= Value end},
+case Rest of
+    [[]] -> [Where1];
+    _ -> [Where1|[{KeyN, fun(Val) -> Val =:= ValueN end} || [[_,_,KeyN,_,_,_,ValueN]] <- Rest]]
+end
+`;
+
+value <- string / number ~;
+
+string <- '"' chars:(!'"' ("\\\\" / '\\"' / .))* '"' `iolist_to_binary(proplists:get_value(chars, Node))`;
+number <- int ~;
+
+key <- name
+`
+{Node,Node}
+`;
+keymap <- name space? '=' space? name
+`
+[NewKey,_,_,_,OldKey]=Node,
+{NewKey,OldKey}
+`;
+
+name <- [A-z] ([A-z] / [0-9])*
+`
+iolist_to_binary(Node)
+`;
+
+int <- '-'? (non_zero_digit digit+) / digit ~;
+non_zero_digit <- [1-9] ~;
+digit <- [0-9] ~;
+space <- [ \t\n\s\r] ~;

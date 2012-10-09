@@ -6,3 +6,4 @@ priv/*
 doc
 test.*-temp-data
 ebin
+riaql_parser.erl
