@@ -1,14 +1,12 @@
-query <- 'SELECT' space+ select_clause space+ 'FROM' space+ from_clause
-space* ('WHERE' space+ where_clause)?
+query <- (SELECT select_clause)
+         (FROM from_clause)
+         (JOIN join_clause)?
+         (WHERE where_clause)?
 `
-[_,_,Select,_,_,_,From,_|Rest]=Node,
-case Rest of
-    [[]] -> {From, Select};
-    _ ->
-        [[_, _, Where]] = Rest,
-        {From, Select, Where}
-end
+[{Action, Clause} || [Action, Clause] <- Node]
 `;
+
+SELECT <- space* 'SELECT' space+ `select`;
 
 select_clause <- '*' / ((keymap / key) (',' space (keymap / key))*)
 `
@@ -22,7 +20,20 @@ case Node of
 end
 `;
 
+JOIN <- space+ 'JOIN' space+ `join`;
+ON <- space+ 'ON' space+ `on`;
+
+join_clause <- name ON name
+`
+[Collection,_,Key]=Node,
+{Collection,Key}
+`;
+
+FROM <- space+ 'FROM' space+ `from`;
+
 from_clause <- function / name ~;
+
+WHERE <- space+ 'WHERE' space+ `where`;
 
 where_clause <- expr ((',' / (space 'AND' space)) space? expr)*
 `
@@ -54,10 +65,10 @@ key <- name
 `
 {Node,Node}
 `;
-keymap <- name space? '=' space? name
+keymap <- name space+ 'AS' space+ name
 `
-[NewKey,_,_,_,OldKey]=Node,
-{NewKey,OldKey}
+[Key,_,_,_,Alias]=Node,
+{Alias,Key}
 `;
 
 name <- [A-z] ([A-z] / [0-9])*

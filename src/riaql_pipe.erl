@@ -1,10 +1,10 @@
 -module(riaql_pipe).
--export([process/3]).
+-export([process/1]).
 
 -include_lib("riak_pipe/include/riak_pipe.hrl").
 -include_lib("riak_pipe/include/riak_pipe_log.hrl").
 
-process(From, Select, Where) ->
+process(Query) ->
     PipeSpec = [#fitting_spec{name=fetch,
                    module=riak_kv_pipe_get,
                    chashfun=follow,
@@ -12,22 +12,24 @@ process(From, Select, Where) ->
                 #fitting_spec{name=select,
                    module = riak_pipe_w_xform,
                    arg=fun(Input, Partition, FittingDetails) ->
-                           Results = map(Input, FittingDetails, [{select, Select}, {where, Where}]),
+                           Results = map(Input, FittingDetails, Query),
                            send_results(Results, Partition, FittingDetails)
                        end,
                    chashfun=follow,
                    q_limit = 64,
                    nval=1}],
-    {ok, Pipe} = riak_pipe:exec(PipeSpec, []),%[{trace, all},{log, lager}]),
+    {ok, Pipe} = riak_pipe:exec(PipeSpec, []),%[{trace, all},{log, lager}])
+    {from, From} = lists:keyfind(from, 1, Query),
     case From of
         {index, Bucket, Index, Match} ->
             riak_kv_pipe_index:queue_existing_pipe(Pipe, Bucket, {eq, Index, Match}, 60000);
         {index, Bucket, Index, Start, End} ->
             riak_kv_pipe_index:queue_existing_pipe(Pipe, Bucket, {range, Index, Start, End}, 60000);
-        _ ->
+        Bucket when is_list(Bucket) ->
             riak_kv_pipe_listkeys:queue_existing_pipe(Pipe, From, 60000)
     end,
-    riak_pipe:collect_results(Pipe).
+    {_, Results, _} = riak_pipe:collect_results(Pipe),
+    Results.
 
 send_results([], _, _) ->
     ok;
@@ -44,13 +46,14 @@ map(Input,_,Args) ->
 
 map_key_value({error, notfound}, _, _) ->
     [];
-map_key_value(RObj, _KD, [{select, Select}, {where, Where}]) ->
+map_key_value(RObj, _KD, Query) ->
     case (catch mochijson2:decode(riak_object:get_value(RObj))) of
         {'EXIT', _} ->
             lager:info("Dail");
         DJson={struct, _} ->
-            case Where of
-                [{_,_}|_] ->
+            {select, Select} = lists:keyfind(select, 1, Query),
+            case lists:keyfind(where, 1, Query) of
+                {where, Where=[{_,_}|_]} ->
                     case lists:all(fun({Key, Pred}) ->
                                        where_key(Key, Pred, DJson)
                                    end, Where) of
