@@ -65,9 +65,11 @@ key <- name
 `
 {Node,Node}
 `;
-keymap <- name space+ 'AS' space+ name
+
+AS <- space+ "AS" space+ `as`;
+keymap <- name AS name
 `
-[Key,_,_,_,Alias]=Node,
+[Key,as,Alias]=Node,
 {Alias,Key}
 `;
 
