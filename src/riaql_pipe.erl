@@ -18,9 +18,9 @@ process(Query) ->
                            Results = make_key_value(erlang_input(Input)),
                            send_results(Results, Partition, FittingDetails)
                    end,
-                   q_limit = 64,
+                   q_limit=100,
                    nval = 1}
-                    ] ++
+               ] ++
             case proplists:get_value(where, Query) of
                 Where=[{_,_}|_] ->
                     [#fitting_spec{name=where,
@@ -30,7 +30,7 @@ process(Query) ->
                            send_results(Results, Partition, FittingDetails)
                         end,
                         chashfun=follow,
-                        q_limit = 64,
+                        q_limit=100,
                         nval=1}];
                 _ ->
                     []
@@ -46,15 +46,23 @@ process(Query) ->
                            send_results(Results, Partition, FittingDetails)
                         end,
                         chashfun=follow,
-                        q_limit = 64,
+                        q_limit=100,
                         nval=1}]
             end,
     {ok, Pipe} = riak_pipe:exec(PipeSpec, []),%[{trace, all},{log, lager}])
     case proplists:get_value(from, Query) of
         {index, Bucket, Index, Match} ->
-            riak_kv_pipe_index:queue_existing_pipe(Pipe, Bucket, {eq, Index, Match}, 60000);
+            riak_kv_pipe_index:queue_existing_pipe(
+                                                   Pipe, Bucket,
+                                                   {eq, Index, Match},
+                                                   60000
+                                                  );
         {index, Bucket, Index, Start, End} ->
-            riak_kv_pipe_index:queue_existing_pipe(Pipe, Bucket, {range, Index, Start, End}, 60000);
+            riak_kv_pipe_index:queue_existing_pipe(
+                                                   Pipe, Bucket,
+                                                   {range, Index, Start, End},
+                                                   60000
+                                                  );
         From when is_binary(From) ->
             riak_kv_pipe_listkeys:queue_existing_pipe(Pipe, From, 60000)
     end,
