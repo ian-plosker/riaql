@@ -19,13 +19,12 @@ process(Query) ->
                    q_limit = 64,
                    nval=1}],
     {ok, Pipe} = riak_pipe:exec(PipeSpec, []),%[{trace, all},{log, lager}])
-    {from, From} = lists:keyfind(from, 1, Query),
-    case From of
+    case From = proplists:get_value(from, Query) of
         {index, Bucket, Index, Match} ->
             riak_kv_pipe_index:queue_existing_pipe(Pipe, Bucket, {eq, Index, Match}, 60000);
         {index, Bucket, Index, Start, End} ->
             riak_kv_pipe_index:queue_existing_pipe(Pipe, Bucket, {range, Index, Start, End}, 60000);
-        Bucket when is_list(Bucket) ->
+        Bucket when is_binary(Bucket) ->
             riak_kv_pipe_listkeys:queue_existing_pipe(Pipe, From, 60000)
     end,
     {_, Results, _} = riak_pipe:collect_results(Pipe),
@@ -51,9 +50,9 @@ map_key_value(RObj, _KD, Query) ->
         {'EXIT', _} ->
             lager:info("Dail");
         DJson={struct, _} ->
-            {select, Select} = lists:keyfind(select, 1, Query),
-            case lists:keyfind(where, 1, Query) of
-                {where, Where=[{_,_}|_]} ->
+            Select = proplists:get_value(select, Query),
+            case proplists:get_value(where, Query) of
+                Where=[{_,_}|_] ->
                     case lists:all(fun({Key, Pred}) ->
                                        where_key(Key, Pred, DJson)
                                    end, Where) of
