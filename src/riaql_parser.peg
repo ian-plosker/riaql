@@ -47,13 +47,20 @@ end
 function <- name '(' value (',' space* value)* ')'
 `
 [Name,_,Val1,Vals,_]=Node,
-apply(riaql, binary_to_atom(Name, utf8), [Val1|[ValN || [_,_,ValN] <- Vals]])
+apply(?MODULE, binary_to_atom(Name, utf8), [Val1|[ValN || [_,_,ValN] <- Vals]])
 `;
 
-expr <- name space? '=' space? value
+comparator <- '=' / '!=' / '<=' / '>=' / '<' / '>' `binary_to_atom(iolist_to_binary(Node), latin1)`;
+
+or <- space+ 'OR' space+ `'or'`;
+expr <- name space? comparator space? value (or expr)?
 `
-[Key,_,_,_,Value]=Node,
-{Key, fun(Val) -> Val =:= Value end}
+[Key,_,Comparator,_,Value|Rest]=Node,
+Expr1 = {Comparator, Key, Value},
+case Rest of
+    [[]] -> Expr1;
+    [['or', {_,_,_}=Expr2]] -> {'or', Expr1, Expr2}
+end
 `;
 
 value <- string / number ~;
@@ -89,3 +96,15 @@ list_to_float(binary_to_list(iolist_to_binary(Node)))
 non_zero_digit <- [1-9] ~;
 digit <- [0-9] ~;
 space <- [ \t\n\s\r] ~;
+
+`
+-export([bucket/1,index/3,index/4]).
+
+bucket(Bucket) ->
+    Bucket.
+
+index(Bucket, Index, Key) ->
+    {index, Bucket, Index, Key}.
+index(Bucket, Index, StartKey, EndKey) ->
+    {index, Bucket, Index, StartKey, EndKey}.
+`

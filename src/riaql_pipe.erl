@@ -22,11 +22,11 @@ process(Query) ->
                    nval = 1}
                ] ++
             case proplists:get_value(where, Query) of
-                Where=[{_,_}|_] ->
+                Where=[{_,_,_}|_] ->
                     [#fitting_spec{name=where,
                         module = riak_pipe_w_xform,
                         arg=fun(Input, Partition, FittingDetails) ->
-                           Results = filter(Input, FittingDetails, Where),
+                           Results = filter(Input, Where),
                            send_results(Results, Partition, FittingDetails)
                         end,
                         chashfun=follow,
@@ -79,17 +79,6 @@ send_results([Result|Results], P, FD)  ->
             throw(ER)
     end.
 
-map({Key,Value}, Select) ->
-    [{Key, select_keys(Select, Value)}].
-
-filter({_Key,Value}=Input, _, Where) ->
-    case lists:all(fun({Key, Pred}) ->
-                    where_key(Key, Pred, Value)
-            end, Where) of
-        false -> [];
-        true -> [Input]
-    end.
-
 make_key_value({error, notfound}) ->
     [];
 make_key_value(RObj) ->
@@ -109,10 +98,36 @@ make_key_value(RObj) ->
             []
     end.
 
-where_key(Key, Pred, {struct, PList}) ->
+map({Key,Value}, Select) ->
+    [{Key, select_keys(Select, Value)}].
+
+filter({_Key,Value}=Input, WhereClauses) ->
+    case lists:all(fun(WhereClause={_, _, _}) ->
+                    where(WhereClause, Value)
+            end, WhereClauses) of
+        false -> [];
+        true -> [Input]
+    end.
+
+where({'=', Key, Value}, Input) ->
+    get_key(Key, Input) == Value;
+where({'!=', Key, Value}, Input) ->
+    get_key(Key, Input) /= Value;
+where({'<', Key, Value}, Input) ->
+    get_key(Key, Input) < Value;
+where({'>', Key, Value}, Input) ->
+    get_key(Key, Input) > Value;
+where({'<=', Key, Value}, Input) ->
+    get_key(Key, Input) =< Value;
+where({'>=', Key, Value}, Input) ->
+    get_key(Key, Input) >= Value;
+where({'or', Expr1, Expr2}, Input) ->
+    where(Expr1, Input) orelse where(Expr2, Input).
+
+get_key(Key, {struct, PList}) ->
     case lists:keyfind(Key, 1, PList) of
-        false -> false;
-        {Key, Value} -> Pred(Value)
+        false -> null;
+        {Key, Value} -> Value
     end.
 
 select_keys(Keys=[{_,_}|_], {struct, PList}) ->
