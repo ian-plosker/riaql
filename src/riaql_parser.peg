@@ -7,6 +7,12 @@ query <- (SELECT select_clause)
 `;
 
 SELECT <- space* 'SELECT' space+ `select`;
+FROM <- space+ 'FROM' space+ `from`;
+JOIN <- space+ 'JOIN' space+ `join`;
+ON <- space+ 'ON' space+ `on`;
+WHERE <- space+ 'WHERE' space+ `where`;
+AND <- space+ 'AND' space+ `'and'`;
+OR <- space+ 'OR' space+ `'or'`;
 
 select_clause <- '*' / ((keymap / key) (',' space (keymap / key))*)
 `
@@ -20,29 +26,14 @@ case Node of
 end
 `;
 
-JOIN <- space+ 'JOIN' space+ `join`;
-ON <- space+ 'ON' space+ `on`;
-
 join_clause <- name ON name
 `
 [Collection,_,Key]=Node,
 {Collection,Key}
 `;
 
-FROM <- space+ 'FROM' space+ `from`;
-
 from_clause <- function / name ~;
-
-WHERE <- space+ 'WHERE' space+ `where`;
-
-where_clause <- expr ((',' / (space 'AND' space)) space? expr)*
-`
-[Where1|Rest]=Node,
-case Rest of
-    [[]] -> [Where1];
-    _ -> [Where1|[WhereN || [[_,_,WhereN]] <- Rest]]
-end
-`;
+where_clause <- expr ~;
 
 function <- name '(' value (',' space* value)* ')'
 `
@@ -52,18 +43,18 @@ apply(?MODULE, binary_to_atom(Name, utf8), [Val1|[ValN || [_,_,ValN] <- Vals]])
 
 comparator <- '=' / '!=' / '<=' / '>=' / '<' / '>' `binary_to_atom(iolist_to_binary(Node), latin1)`;
 
-or <- space+ 'OR' space+ `'or'`;
-expr <- name space? comparator space? value (or expr)?
+expr <- name space? comparator space? value ((OR / AND) (expr / ( '(' expr ')' )))?
 `
 [Key,_,Comparator,_,Value|Rest]=Node,
 Expr1 = {Comparator, Key, Value},
 case Rest of
     [[]] -> Expr1;
-    [['or', {_,_,_}=Expr2]] -> {'or', Expr1, Expr2}
+    [[Operator, {_,_,_}=Expr2]] -> {Operator, Expr1, Expr2};
+    [[Operator, [<<"(">>, {_,_,_}=Expr2, <<")">>]]] -> {Operator, Expr2, Expr1}
 end
 `;
 
-value <- string / number ~;
+value <- string / number / null ~;
 
 string <- '"' chars:(!'"' ("\\\\" / '\\"' / .))* '"' `iolist_to_binary(proplists:get_value(chars, Node))`;
 number <- float / int ~;
@@ -85,6 +76,7 @@ name <- [A-z] ([A-z] / [0-9])*
 iolist_to_binary(Node)
 `;
 
+null <- 'null' `'null'`;
 int <- '-'? non_zero_digit digit*
 `
 list_to_integer(binary_to_list(iolist_to_binary(Node)))
@@ -98,7 +90,7 @@ digit <- [0-9] ~;
 space <- [ \t\n\s\r] ~;
 
 `
--export([bucket/1,index/3,index/4]).
+-export([bucket/1, index/3, index/4]).
 
 bucket(Bucket) ->
     Bucket.

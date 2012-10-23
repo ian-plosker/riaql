@@ -101,10 +101,8 @@ make_key_value(RObj) ->
 map({Key,Value}, Select) ->
     [{Key, select_keys(Select, Value)}].
 
-filter({_Key,Value}=Input, WhereClauses) ->
-    case lists:all(fun(WhereClause={_, _, _}) ->
-                    where(WhereClause, Value)
-            end, WhereClauses) of
+filter({_Key,Value}=Input, WhereClause) ->
+    case where(WhereClause, Value) of
         false -> [];
         true -> [Input]
     end.
@@ -122,7 +120,9 @@ where({'<=', Key, Value}, Input) ->
 where({'>=', Key, Value}, Input) ->
     get_key(Key, Input) >= Value;
 where({'or', Expr1, Expr2}, Input) ->
-    where(Expr1, Input) orelse where(Expr2, Input).
+    where(Expr1, Input) orelse where(Expr2, Input);
+where({'and', Expr1, Expr2}, Input) ->
+    where(Expr1, Input) andalso where(Expr2, Input).
 
 get_key(Key, {struct, PList}) ->
     case lists:keyfind(Key, 1, PList) of
