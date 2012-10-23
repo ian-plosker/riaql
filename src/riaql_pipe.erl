@@ -22,7 +22,7 @@ process(Query) ->
                    nval = 1}
                ] ++
             case proplists:get_value(where, Query) of
-                Where=[{_,_,_}|_] ->
+                Where={_,_,_} ->
                     [#fitting_spec{name=where,
                         module = riak_pipe_w_xform,
                         arg=fun(Input, Partition, FittingDetails) ->
