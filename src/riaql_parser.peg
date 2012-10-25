@@ -2,6 +2,7 @@ query <- (SELECT select_clause)
          (FROM from_clause)
          (JOIN join_clause)?
          (WHERE where_clause)?
+         (ORDER_BY order_clause)?
 `
 [{Action, Clause} || [Action, Clause] <- Node]
 `;
@@ -11,8 +12,13 @@ FROM <- space+ 'FROM' space+ `from`;
 JOIN <- space+ 'JOIN' space+ `join`;
 ON <- space+ 'ON' space+ `on`;
 WHERE <- space+ 'WHERE' space+ `where`;
+ORDER_BY <- space+ 'ORDER BY' space+ `order_by`;
+
 AND <- space+ 'AND' space+ `'and'`;
 OR <- space+ 'OR' space+ `'or'`;
+
+ASC <- space+ 'ASC' `asc`;
+DESC <- space+ 'DESC' `desc`;
 
 select_clause <- '*' / ((keymap / key) (',' space (keymap / key))*)
 `
@@ -34,6 +40,18 @@ join_clause <- name ON name
 
 from_clause <- function / name ~;
 where_clause <- expr ~;
+
+order_clause <- name (ASC / DESC)?
+`
+[Field|Rest]=Node,
+{
+    Field,
+    case Rest of
+        [[]] -> asc;
+        [Sort] -> Sort
+    end
+}
+`;
 
 function <- name '(' value (',' space* value)* ')'
 `
