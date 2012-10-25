@@ -8,7 +8,8 @@ process(Query) ->
     Select = proplists:get_value(select, Query),
     From = proplists:get_value(from, Query),
 
-    PipeSpec = [#fitting_spec{name=fetch,
+    PipeSpec = lists:append([[
+                #fitting_spec{name=fetch,
                    module=riak_kv_pipe_get,
                    chashfun=follow,
                    nval={riak_kv_pipe_get, bkey_nval}},
@@ -21,90 +22,11 @@ process(Query) ->
                    end,
                    q_limit=100,
                    nval = 1}
-               ] ++
-            case proplists:get_value(where, Query) of
-                Where={_,_,_} ->
-                    [#fitting_spec{name=where,
-                        module = riak_pipe_w_xform,
-                        arg=fun(Input, Partition, FittingDetails) ->
-                           Results = filter(Input, Where),
-                           send_results(Results, Partition, FittingDetails)
-                        end,
-                        chashfun=follow,
-                        q_limit=100,
-                        nval=1}];
-                _ ->
-                    []
-            end
-            ++ case proplists:get_value(select, Query) of
-                <<"*">> ->
-                    [];
-                Select ->
-                    [#fitting_spec{name=select,
-                        module = riak_pipe_w_xform,
-                        arg=fun(Input, Partition, FittingDetails) ->
-                           Results = map(Input, Select),
-                           send_results(Results, Partition, FittingDetails)
-                        end,
-                        chashfun=follow,
-                        q_limit=100,
-                        nval=1}]
-            end
-            ++ case proplists:get_value(order_by, Query) of
-                {Field, Sort} ->
-                    [#fitting_spec{name={tag, From},
-                        module = riak_pipe_w_xform,
-                        arg=fun(Input, Partition, FittingDetails) ->
-                            send_results([{From, Input}], Partition, FittingDetails)
-                        end,
-                        chashfun=follow,
-                        q_limit=100,
-                        nval=1},
-                    #fitting_spec{name=sort_follow,
-                        module = riak_pipe_w_reduce,
-                        arg=fun(_Key, [Input|Acc], _P, _FD) ->
-                            {ok, lists:umerge(
-                                              fun({_KeyA, ValueA}, {_KeyB, ValueB}) ->
-                                                  FieldA = get_key(Field, ValueA),
-                                                  FieldB = get_key(Field, ValueB),
-                                                  case Sort of
-                                                      asc ->
-                                                          FieldA < FieldB;
-                                                      desc ->
-                                                          FieldA > FieldB
-                                                  end
-                                              end,
-                                              [Input],
-                                              Acc
-                                             )}
-                        end,
-                        chashfun=follow,
-                        q_limit=100,
-                        nval=1},
-                    #fitting_spec{name=sort,
-                        module = riak_pipe_w_reduce,
-                        arg=fun(_Key, [Input|Acc], _P, _FD) ->
-                            {ok, lists:umerge(
-                                              fun({_KeyA, ValueA}, {_KeyB, ValueB}) ->
-                                                  FieldA = get_key(Field, ValueA),
-                                                  FieldB = get_key(Field, ValueB),
-                                                  case Sort of
-                                                      asc ->
-                                                          FieldA < FieldB;
-                                                      desc ->
-                                                          FieldA > FieldB
-                                                  end
-                                              end,
-                                              Input,
-                                              Acc
-                                             )}
-                        end,
-                        chashfun=chash:key_of(now()),
-                        q_limit=100,
-                        nval=1}];
-                _ ->
-                    []
-            end,
+               ],
+               where_fitting(proplists:get_value(where, Query)),
+               select_fitting(Select),
+               order_by_fittings(proplists:get_value(order_by, Query), From)]),
+
     {ok, Pipe} = riak_pipe:exec(PipeSpec, []),%[{trace, all},{log, lager}])
     case From of
         {index, Bucket, Index, Match} ->
@@ -124,6 +46,70 @@ process(Query) ->
     end,
     {_, Results, _} = riak_pipe:collect_results(Pipe),
     [Result || {_, Result} <- Results].
+
+where_fitting(Where={_,_,_}) ->
+    [#fitting_spec{name=where,
+        module = riak_pipe_w_xform,
+        arg=fun(Input, Partition, FittingDetails) ->
+           Results = filter(Input, Where),
+           send_results(Results, Partition, FittingDetails)
+        end,
+        chashfun=follow,
+        q_limit=100,
+        nval=1}];
+where_fitting(_) ->
+    [].
+
+select_fitting(<<"*">>) ->
+    [];
+select_fitting(Select) ->
+    [#fitting_spec{name=select,
+        module = riak_pipe_w_xform,
+        arg=fun(Input, Partition, FittingDetails) ->
+           Results = map(Input, Select),
+           send_results(Results, Partition, FittingDetails)
+        end,
+        chashfun=follow,
+        q_limit=100,
+        nval=1}].
+
+order_by_fittings({Field, Sort}, From) ->
+    SortFun = fun({_KeyA, ValueA}, {_KeyB, ValueB}) ->
+            FieldA = get_key(Field, ValueA),
+            FieldB = get_key(Field, ValueB),
+            case Sort of
+                asc ->
+                    FieldA < FieldB;
+                desc ->
+                    FieldA > FieldB
+            end
+    end,
+    [#fitting_spec{name={tag, From},
+        module = riak_pipe_w_xform,
+        arg=fun(Input, Partition, FittingDetails) ->
+            send_results([{From, Input}], Partition, FittingDetails)
+        end,
+        chashfun=follow,
+        q_limit=100,
+        nval=1},
+    #fitting_spec{name=sort_follow,
+        module = riak_pipe_w_reduce,
+        arg=fun(_Key, [Input|Acc], _P, _FD) ->
+            {ok, lists:umerge(SortFun, [Input], Acc)}
+        end,
+        chashfun=follow,
+        q_limit=100,
+        nval=1},
+    #fitting_spec{name=sort,
+        module = riak_pipe_w_reduce,
+        arg=fun(_Key, [Input|Acc], _P, _FD) ->
+            {ok, lists:umerge(SortFun, Input, Acc)}
+        end,
+        chashfun=chash:key_of(now()),
+        q_limit=100,
+        nval=1}];
+order_by_fittings(_, _From) ->
+    [].
 
 send_results([], _, _) ->
     ok;
