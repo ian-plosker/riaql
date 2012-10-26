@@ -14,6 +14,8 @@ ON <- space+ 'ON' space+ `on`;
 WHERE <- space+ 'WHERE' space+ `where`;
 ORDER_BY <- space+ 'ORDER BY' space+ `order_by`;
 
+AS <- space+ "AS" space+ `as`;
+
 AND <- space+ 'AND' space+ `'and'`;
 OR <- space+ 'OR' space+ `'or'`;
 
@@ -72,17 +74,11 @@ case Rest of
 end
 `;
 
-value <- string / number / null ~;
-
-string <- '"' chars:(!'"' ("\\\\" / '\\"' / .))* '"' `iolist_to_binary(proplists:get_value(chars, Node))`;
-number <- float / int ~;
-
 key <- name
 `
 {Node,Node}
 `;
 
-AS <- space+ "AS" space+ `as`;
 keymap <- name AS name
 `
 [Key,as,Alias]=Node,
@@ -93,6 +89,11 @@ name <- [A-z] ([A-z] / [0-9])*
 `
 iolist_to_binary(Node)
 `;
+
+value <- string / number / null ~;
+
+string <- '"' chars:(!'"' ("\\\\" / '\\"' / .))* '"' `iolist_to_binary(proplists:get_value(chars, Node))`;
+number <- float / int ~;
 
 null <- 'null' `'null'`;
 int <- '-'? non_zero_digit digit*
